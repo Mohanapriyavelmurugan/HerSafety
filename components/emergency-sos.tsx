@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { AlertCircle } from "lucide-react"
+import { emergencyAPI } from "@/lib/api"
 import {
   Dialog,
   DialogContent,
@@ -11,26 +12,43 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function EmergencySOS() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
+  const { toast } = useToast()
 
-  const handleSOS = () => {
+  const handleSOS = async () => {
     setIsSending(true)
-    // Simulate API call without using features that might trigger Service Worker
-    const timer = setTimeout(() => {
+    try {
+      // Get user's current location
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject)
+      })
+
+      const location = `${position.coords.latitude},${position.coords.longitude}`
+      
+      // Send SOS signal to backend
+      await emergencyAPI.sendSOS(location)
+      
+      toast({
+        title: "SOS Signal Sent",
+        description: "Emergency contacts have been notified of your situation.",
+        variant: "destructive",
+      })
+      
+      setIsDialogOpen(false)
+    } catch (error) {
+      console.error("SOS error:", error)
+      toast({
+        title: "Error",
+        description: "Failed to send SOS signal. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
       setIsSending(false)
-      setIsSuccess(true)
-      // Reset after 3 seconds
-      const resetTimer = setTimeout(() => {
-        setIsSuccess(false)
-        setIsDialogOpen(false)
-        clearTimeout(resetTimer)
-      }, 3000)
-      clearTimeout(timer)
-    }, 2000)
+    }
   }
 
   return (
@@ -38,38 +56,36 @@ export default function EmergencySOS() {
       <Button
         variant="destructive"
         size="lg"
-        className="fixed bottom-6 right-6 z-50 rounded-full h-16 w-16 shadow-lg flex items-center justify-center"
+        className="fixed bottom-4 right-4 rounded-full p-4 shadow-lg"
         onClick={() => setIsDialogOpen(true)}
       >
-        SOS
+        <AlertCircle className="h-6 w-6" />
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center text-destructive">
-              <AlertCircle className="mr-2 h-5 w-5" />
-              Emergency SOS
-            </DialogTitle>
+            <DialogTitle>Send Emergency SOS</DialogTitle>
             <DialogDescription>
-              This will send your current location and alert to emergency contacts and nearby authorities.
+              This will notify your emergency contacts and local authorities of your situation.
             </DialogDescription>
           </DialogHeader>
-
-          {!isSuccess ? (
-            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleSOS} disabled={isSending}>
-                {isSending ? "Sending..." : "Send Emergency Alert"}
-              </Button>
-            </DialogFooter>
-          ) : (
-            <div className="p-4 bg-green-50 text-green-700 rounded-md text-center">
-              Emergency alert sent successfully! Help is on the way.
-            </div>
-          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDialogOpen(false)}
+              disabled={isSending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleSOS}
+              disabled={isSending}
+            >
+              {isSending ? "Sending..." : "Send SOS"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

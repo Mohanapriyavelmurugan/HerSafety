@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
+import { authAPI } from "@/lib/api"
 
 type User = {
   id: string
@@ -25,9 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    // Check if user is logged in from localStorage
+    const token = localStorage.getItem("hersafety_token")
     const storedUser = localStorage.getItem("hersafety_user")
-    if (storedUser) {
+    
+    if (token && storedUser) {
       setUser(JSON.parse(storedUser))
     }
     setIsLoading(false)
@@ -36,26 +38,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // For demo purposes, check if user exists in localStorage
-      const registeredUsers = JSON.parse(localStorage.getItem("hersafety_registered_users") || "[]")
-      const foundUser = registeredUsers.find((u: any) => u.email === email && u.password === password)
-
-      if (!foundUser) {
-        setIsLoading(false)
-        return false
-      }
-
-      const userData = {
-        id: foundUser.id,
-        name: foundUser.name,
-        email: foundUser.email,
-      }
-
-      setUser(userData)
+      const response = await authAPI.login(email, password)
+      const { token, user: userData } = response
+      
+      localStorage.setItem("hersafety_token", token)
       localStorage.setItem("hersafety_user", JSON.stringify(userData))
+      
+      setUser(userData)
       setIsLoading(false)
       return true
     } catch (error) {
@@ -68,29 +57,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (name: string, email: string, phone: string, password: string) => {
     setIsLoading(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // Check if user already exists
-      const registeredUsers = JSON.parse(localStorage.getItem("hersafety_registered_users") || "[]")
-      if (registeredUsers.some((u: any) => u.email === email)) {
-        setIsLoading(false)
-        return false
-      }
-
-      // Create new user
-      const newUser = {
-        id: `user_${Date.now()}`,
-        name,
-        email,
-        phone,
-        password,
-      }
-
-      // Save to localStorage
-      registeredUsers.push(newUser)
-      localStorage.setItem("hersafety_registered_users", JSON.stringify(registeredUsers))
-
+      const response = await authAPI.register({ name, email, phone, password })
+      const { token, user: userData } = response
+      
+      localStorage.setItem("hersafety_token", token)
+      localStorage.setItem("hersafety_user", JSON.stringify(userData))
+      
+      setUser(userData)
       setIsLoading(false)
       return true
     } catch (error) {
@@ -102,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null)
+    localStorage.removeItem("hersafety_token")
     localStorage.removeItem("hersafety_user")
     router.push("/login")
   }
