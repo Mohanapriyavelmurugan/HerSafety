@@ -1,36 +1,59 @@
 import db from '../config/db.js';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
-export const registerUser = (req, res) => {
-  const { name, email, password, phone, address } = req.body;
-  const sql = 'INSERT INTO users (name, email, password, phone, address) VALUES (?, ?, ?, ?, ?)';
-  db.query(
-    sql,
-    [name, email, password, phone, address || null],
-    (err, result) => {
-      if (err) {
-        console.error('User registration failed:', err);
-        return res.status(500).json({ error: 'User registration failed' });
-      }
-      res.status(201).json({ message: 'User registered', userId: result.insertId });
-    }
-  );
+export const registerUser = async (req, res) => {
+  try {
+    const { name, email, password, phone } = req.body;
+    
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const sql = 'INSERT INTO users (name, email, password, phone) VALUES (?, ?, ?, ?)';
+    const [result] = await db.query(sql, [name, email, hashedPassword, phone]);
+    
+    res.status(201).json({ message: 'User registered', userId: result.insertId });
+  } catch (err) {
+    console.error('User registration failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
 };
 
-export const loginUser = (req, res) => {
-  let { email, password } = req.body;
-  email = email ? email.trim() : '';
-  password = password ? password.trim() : '';
-  console.log('Login attempt:', email, password); // Debug log
-
-  const sql = 'SELECT id, name, email, password FROM users WHERE email = ?';
-  db.query(sql, [email], (err, results) => {
-    if (err) {
-      console.error('Login failed:', err);
-      return res.status(500).json({ error: 'Login failed' });
+export const loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
     }
-    console.log('DB results:', results); // Add this line
-    if (results.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
-    if (results[0].password !== password) return res.status(401).json({ error: 'Invalid credentials' });
-    res.status(200).json({ user: { id: results[0].id, name: results[0].name, email: results[0].email }, token: 'dummy-token' });
-  });
+
+    const sql = 'SELECT id, name, email, password FROM users WHERE email = ?';
+    const [results] = await db.query(sql, [email]);
+
+    if (results.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const user = results[0];
+    const isValidPassword = await bcrypt.compare(password, user.password);
+
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Generate a JWT token
+    const token = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '1h' }
+    );
+
+    res.status(200).json({ 
+      user: { id: user.id, name: user.name, email: user.email }, 
+      token 
+    });
+  } catch (err) {
+    console.error('Login failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
 };

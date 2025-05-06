@@ -4,9 +4,14 @@ const router = express.Router();
 
 console.log('incidentRoutes loaded');
 
-router.post('/report', (req, res, next) => {
-  console.log('POST /api/incidents/report hit');
-  next();
-}, reportIncident);
+router.post('/report', async (req, res) => {
+  try {
+    console.log('POST /api/incidents/report hit');
+    await reportIncident(req, res);
+  } catch (error) {
+    console.error('Error in incident route:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
 
 export default router;

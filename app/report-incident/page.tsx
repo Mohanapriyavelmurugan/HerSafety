@@ -32,16 +32,16 @@ const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/web
 const formSchema = z.object({
   date: z.date({
     required_error: "Please select a date.",
-  }),
+  }).refine((date) => date <= new Date(), "Date cannot be in the future"),
   time: z.string().min(1, {
     message: "Please select a time.",
-  }),
+  }).transform(time => time.length === 5 ? time + ':00' : time),
   location: z.string().min(5, {
     message: "Location must be at least 5 characters.",
   }),
   incidentType: z.string({
     required_error: "Please select an incident type.",
-  }),
+  }).refine(type => ['harassment', 'assault', 'stalking', 'domestic_violence', 'workplace_harassment', 'other'].includes(type), "Invalid incident type"),
   description: z
     .string()
     .min(10, {
@@ -64,18 +64,18 @@ const formSchema = z.object({
 })
 
 export default function ReportIncidentPage() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [showSuccessDialog, setShowSuccessDialog] = useState(false)
-  const [caseId, setCaseId] = useState("")
-  const { toast } = useToast()
-  const { user, isLoading: authLoading } = useAuth()
-  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [caseId, setCaseId] = useState("");
+  const { toast } = useToast();
+  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/login")
+      router.push("/login");
     }
-  }, [user, authLoading, router])
+  }, [user, authLoading, router]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -84,62 +84,117 @@ export default function ReportIncidentPage() {
       location: "",
       description: "",
     },
-  })
+  });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true)
-
-    // Generate a unique case ID
-    const newCaseId = "INC-" + Math.floor(100000 + Math.random() * 900000)
-    setCaseId(newCaseId)
-
-    // Create incident object
-    const incident = {
-      id: newCaseId,
-      userId: user?.id,
-      date: format(values.date, "yyyy-MM-dd"),
-      time: values.time,
-      location: values.location,
-      type: values.incidentType,
-      description: values.description,
-      status: "New",
-      reporter: user?.name,
-      evidence: values.evidence && values.evidence.length > 0,
-    }
+  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+    setIsLoading(true);
 
     try {
+      // Log form values for debugging
+      console.log('Form values:', values);
+
+      // Ensure all required fields are present
+      const requiredFields = {
+        userId: user?.id,
+        date: format(values.date, "yyyy-MM-dd"),
+        time: values.time,
+        location: values.location,
+        type: values.incidentType,
+        description: values.description
+      };
+
+      // Validate required fields
+      const missingFields = Object.entries(requiredFields).filter(([key, value]) => {
+        console.log(`Validating ${key}:`, value);
+        return !value;
+      }).map(([key]) => key);
+
+      if (missingFields.length > 0) {
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+
+      // Add evidence if present
+      const incidentData = {
+        ...requiredFields,
+        evidence: values.evidence ? Array.from(values.evidence) : null
+      };
+
       const response = await fetch('http://localhost:5000/api/incidents/report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(incident),
+        body: JSON.stringify(incidentData),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to report incident');
+        try {
+          const errorData = await response.json();
+          
+          // Handle different error types
+          let errorMessage = 'Failed to report incident';
+          
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          } else if (errorData.errors) {
+            errorMessage = errorData.errors.join('\n');
+          } else if (errorData.missing) {
+            errorMessage = `Missing required fields: ${errorData.missing.join(', ')}`;
+          }
+
+          console.error('API Error:', { 
+            status: response.status,
+            message: errorMessage,
+            data: errorData
+          });
+
+          // Show detailed errors in toast
+          toast({
+            title: 'Error',
+            description: errorMessage,
+            variant: 'destructive',
+            duration: 5000
+          });
+
+          throw new Error(errorMessage);
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          throw new Error(`Server error (${response.status}): ${response.statusText}`);
+        }
       }
 
       const data = await response.json();
-      setIsLoading(false);
+      
+      // Set the case ID from the backend response
+      setCaseId(data.incidentId || data.caseTrackingId);
+      
+      // Show success dialog
       setShowSuccessDialog(true);
-    } catch (error) {
+      
+      toast({
+        title: 'Success',
+        description: 'Incident reported successfully. Your case ID is: ' + data.incidentId,
+      });
+    } catch (error: any) {
       console.error('Error reporting incident:', error);
       toast({
-        title: "Error",
-        description: "Failed to report incident. Please try again.",
-        variant: "destructive",
+        title: 'Error',
+        description: error.response?.data?.error || 'Failed to report incident. Please try again.',
+        variant: 'destructive',
       });
+    } finally {
       setIsLoading(false);
     }
-  }
+  };
 
   if (authLoading) {
-    return <div className="container py-10 text-center">Loading...</div>
+    return (
+      <div className="container py-10 text-center">Loading...</div>
+    );
   }
 
   if (!user) {
-    return null // Will redirect in useEffect
+    return null;
   }
 
   return (
@@ -153,7 +208,7 @@ export default function ReportIncidentPage() {
         </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
@@ -344,5 +399,6 @@ export default function ReportIncidentPage() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
+
