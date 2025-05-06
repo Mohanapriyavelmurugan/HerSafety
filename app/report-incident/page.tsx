@@ -86,7 +86,7 @@ export default function ReportIncidentPage() {
     },
   })
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true)
 
     // Generate a unique case ID
@@ -105,36 +105,33 @@ export default function ReportIncidentPage() {
       status: "New",
       reporter: user?.name,
       evidence: values.evidence && values.evidence.length > 0,
-      updates: [
-        {
-          date: format(new Date(), "yyyy-MM-dd"),
-          time: format(new Date(), "HH:mm"),
-          message: "Case received and pending review.",
-        },
-      ],
     }
 
-    // Simulate API call
-    setTimeout(() => {
-      // Save to localStorage for demo purposes
-      const incidents = JSON.parse(localStorage.getItem("hersafety_incidents") || "[]")
-      incidents.push(incident)
-      localStorage.setItem("hersafety_incidents", JSON.stringify(incidents))
+    try {
+      const response = await fetch('http://localhost:5000/api/incidents/report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(incident),
+      });
 
-      // Save to user's incidents
-      const userIncidents = JSON.parse(localStorage.getItem("hersafety_user_incidents") || "[]")
-      userIncidents.push({
-        id: incident.id,
-        date: incident.date,
-        type: incident.type,
-        location: incident.location,
-        status: incident.status,
-      })
-      localStorage.setItem("hersafety_user_incidents", JSON.stringify(userIncidents))
+      if (!response.ok) {
+        throw new Error('Failed to report incident');
+      }
 
-      setIsLoading(false)
-      setShowSuccessDialog(true)
-    }, 2000)
+      const data = await response.json();
+      setIsLoading(false);
+      setShowSuccessDialog(true);
+    } catch (error) {
+      console.error('Error reporting incident:', error);
+      toast({
+        title: "Error",
+        description: "Failed to report incident. Please try again.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+    }
   }
 
   if (authLoading) {
