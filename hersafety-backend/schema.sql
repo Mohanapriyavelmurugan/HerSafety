@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(100) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   phone VARCHAR(15),
-  address TEXT
 );
 
 CREATE TABLE IF NOT EXISTS emergency_contacts (

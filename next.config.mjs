@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -10,11 +9,6 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-  },
-  // Disable PWA features in the v0 preview environment
-  pwa: {
-    disable: true,
-    dest: 'public'
   },
   // Ensure no service worker is registered
   headers: async () => {
@@ -32,4 +26,4 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+export default nextConfig 

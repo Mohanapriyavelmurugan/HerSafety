@@ -10,9 +10,11 @@ import caseRoutes from './routes/caseRoutes.js';
 const app = express();
 const PORT = 5000;
 
+
+
 app.use(cors());
 app.use(bodyParser.json());
-
+app.get('/api/test', (req, res) => res.send('API root works!'));
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/emergency-contacts', emergencyRoutes);
