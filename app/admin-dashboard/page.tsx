@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,71 +21,49 @@ import {
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 
-// Mock incident data
-const mockIncidents = [
-  {
-    id: "INC-123456",
-    date: "2023-05-15",
-    time: "14:30",
-    location: "Central Park, New York",
-    type: "Harassment",
-    status: "In Progress",
-    reporter: "Jane Doe",
-    description: "Verbal harassment while walking through the park.",
-    evidence: true,
-  },
-  {
-    id: "INC-789012",
-    date: "2023-05-14",
-    time: "09:15",
-    location: "Main Street, Boston",
-    type: "Stalking",
-    status: "New",
-    reporter: "Emily Johnson",
-    description: "Being followed by the same person for several days.",
-    evidence: false,
-  },
-  {
-    id: "INC-345678",
-    date: "2023-05-10",
-    time: "18:45",
-    location: "Downtown, Chicago",
-    type: "Assault",
-    status: "In Progress",
-    reporter: "Sarah Williams",
-    description: "Physical assault while leaving work.",
-    evidence: true,
-  },
-  {
-    id: "INC-901234",
-    date: "2023-05-08",
-    time: "22:10",
-    location: "Subway Station, New York",
-    type: "Harassment",
-    status: "Resolved",
-    reporter: "Maria Garcia",
-    description: "Harassment on the subway platform.",
-    evidence: false,
-  },
-  {
-    id: "INC-567890",
-    date: "2023-05-05",
-    time: "16:30",
-    location: "Shopping Mall, Los Angeles",
-    type: "Stalking",
-    status: "In Progress",
-    reporter: "Lisa Chen",
-    description: "Being followed around the mall by an unknown person.",
-    evidence: true,
-  },
-]
+interface Incident {
+  id: string
+  user_id: number
+  description: string
+  location: string
+  date_time: string
+  status: string
+  reporter_name: string
+  type: string
+  evidence: boolean
+}
 
 export default function AdminDashboardPage() {
-  const [incidents, setIncidents] = useState(mockIncidents)
-  const [selectedIncident, setSelectedIncident] = useState<(typeof mockIncidents)[0] | null>(null)
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+
+  useEffect(() => {
+    const fetchIncidents = async () => {
+      try {
+        const response = await fetch('/api/incidents')
+        if (!response.ok) {
+          throw new Error('Failed to fetch incidents')
+        }
+        const data = await response.json()
+        setIncidents(data)
+      } catch (error) {
+        console.error('Error fetching incidents:', error)
+        toast({
+          title: "Error",
+          description: "Failed to load incidents",
+          variant: "destructive"
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchIncidents()
+  }, [toast])
 
   const filteredIncidents = incidents.filter((incident) => {
     // Apply status filter
@@ -98,7 +76,7 @@ export default function AdminDashboardPage() {
       searchQuery &&
       !incident.id.toLowerCase().includes(searchQuery.toLowerCase()) &&
       !incident.location.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !incident.reporter.toLowerCase().includes(searchQuery.toLowerCase())
+      !incident.reporter_name.toLowerCase().includes(searchQuery.toLowerCase())
     ) {
       return false
     }
@@ -106,13 +84,36 @@ export default function AdminDashboardPage() {
     return true
   })
 
-  const updateIncidentStatus = (id: string, newStatus: string) => {
-    setIncidents(incidents.map((incident) => (incident.id === id ? { ...incident, status: newStatus } : incident)))
+  const updateIncidentStatus = async (id: string, newStatus: string) => {
+    try {
+      const response = await fetch(`/api/incidents/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
 
-    toast({
-      title: "Status updated",
-      description: `Case ${id} status changed to ${newStatus}`,
-    })
+      if (!response.ok) {
+        throw new Error('Failed to update incident status')
+      }
+
+      setIncidents(incidents.map((incident) => 
+        incident.id === id ? { ...incident, status: newStatus } : incident
+      ))
+
+      toast({
+        title: "Status updated",
+        description: `Case ${id} status changed to ${newStatus}`,
+      })
+    } catch (error) {
+      console.error('Error updating incident status:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update incident status",
+        variant: "destructive"
+      })
+    }
   }
 
   function getStatusColor(status: string) {
@@ -139,6 +140,21 @@ export default function AdminDashboardPage() {
       default:
         return null
     }
+  }
+
+  function formatDateTime(date: string, time: string) {
+    return {
+      date: new Date(date).toLocaleDateString(),
+      time: time
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto py-6 flex justify-center items-center h-64">
+        <p>Loading incidents...</p>
+      </div>
+    )
   }
 
   return (
@@ -244,127 +260,130 @@ export default function AdminDashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredIncidents.length > 0 ? (
-                    filteredIncidents.map((incident) => (
-                      <TableRow key={incident.id}>
-                        <TableCell className="font-medium">{incident.id}</TableCell>
-                        <TableCell>{incident.date}</TableCell>
-                        <TableCell>{incident.location}</TableCell>
-                        <TableCell>{incident.type}</TableCell>
-                        <TableCell>{incident.reporter}</TableCell>
-                        <TableCell>
-                          <Badge className={getStatusColor(incident.status)}>
-                            <span className="flex items-center gap-1">
-                              {getStatusIcon(incident.status)}
-                              {incident.status}
-                            </span>
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => setSelectedIncident(incident)}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  <span className="sr-only">View details</span>
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="sm:max-w-[600px]">
-                                {selectedIncident && (
-                                  <>
-                                    <DialogHeader>
-                                      <DialogTitle className="flex items-center justify-between">
-                                        <span>Case Details: {selectedIncident.id}</span>
-                                        <Badge className={getStatusColor(selectedIncident.status)}>
-                                          {selectedIncident.status}
-                                        </Badge>
-                                      </DialogTitle>
-                                      <DialogDescription>
-                                        Reported on {selectedIncident.date} at {selectedIncident.time}
-                                      </DialogDescription>
-                                    </DialogHeader>
+                    filteredIncidents.map((incident) => {
+                      const { date, time } = formatDateTime(incident.date, incident.time)
+                      return (
+                        <TableRow key={incident.id}>
+                          <TableCell className="font-medium">{incident.id}</TableCell>
+                          <TableCell>{date}</TableCell>
+                          <TableCell>{incident.location}</TableCell>
+                          <TableCell>{incident.type}</TableCell>
+                          <TableCell>{incident.reporter_name}</TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(incident.status)}>
+                              <span className="flex items-center gap-1">
+                                {getStatusIcon(incident.status)}
+                                {incident.status}
+                              </span>
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => setSelectedIncident(incident)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                    <span className="sr-only">View details</span>
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-[600px]">
+                                  {selectedIncident && (
+                                    <>
+                                      <DialogHeader>
+                                        <DialogTitle className="flex items-center justify-between">
+                                          <span>Case Details: INC-{selectedIncident.id}</span>
+                                          <Badge className={getStatusColor(selectedIncident.status)}>
+                                            {selectedIncident.status}
+                                          </Badge>
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                          Reported on {formatDateTime(selectedIncident.date, selectedIncident.time).date} at {formatDateTime(selectedIncident.date, selectedIncident.time).time}
+                                        </DialogDescription>
+                                      </DialogHeader>
 
-                                    <div className="grid gap-4 py-4">
-                                      <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                          <h3 className="text-sm font-medium mb-1">Reporter</h3>
-                                          <p className="text-sm">{selectedIncident.reporter}</p>
+                                      <div className="grid gap-4 py-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Reporter</h3>
+                                            <p className="text-sm">{selectedIncident.reporter_name}</p>
+                                          </div>
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Incident Type</h3>
+                                            <p className="text-sm">{selectedIncident.type}</p>
+                                          </div>
                                         </div>
+
                                         <div>
-                                          <h3 className="text-sm font-medium mb-1">Incident Type</h3>
-                                          <p className="text-sm">{selectedIncident.type}</p>
+                                          <h3 className="text-sm font-medium mb-1">Location</h3>
+                                          <p className="text-sm">{selectedIncident.location}</p>
+                                        </div>
+
+                                        <div>
+                                          <h3 className="text-sm font-medium mb-1">Description</h3>
+                                          <p className="text-sm">{selectedIncident.description}</p>
+                                        </div>
+
+                                        <div>
+                                          <h3 className="text-sm font-medium mb-1">Evidence</h3>
+                                          <p className="text-sm">
+                                            {selectedIncident.evidence
+                                              ? "Evidence files attached"
+                                              : "No evidence files attached"}
+                                          </p>
+                                        </div>
+
+                                        <div>
+                                          <h3 className="text-sm font-medium mb-1">Update Status</h3>
+                                          <Select
+                                            defaultValue={selectedIncident.status}
+                                            onValueChange={(value) => {
+                                              updateIncidentStatus(selectedIncident.id, value)
+                                              setSelectedIncident({ ...selectedIncident, status: value })
+                                            }}
+                                          >
+                                            <SelectTrigger>
+                                              <SelectValue placeholder="Select status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="New">New</SelectItem>
+                                              <SelectItem value="In Progress">In Progress</SelectItem>
+                                              <SelectItem value="Resolved">Resolved</SelectItem>
+                                            </SelectContent>
+                                          </Select>
                                         </div>
                                       </div>
 
-                                      <div>
-                                        <h3 className="text-sm font-medium mb-1">Location</h3>
-                                        <p className="text-sm">{selectedIncident.location}</p>
-                                      </div>
+                                      <DialogFooter>
+                                        <Button type="submit">Save Changes</Button>
+                                      </DialogFooter>
+                                    </>
+                                  )}
+                                </DialogContent>
+                              </Dialog>
 
-                                      <div>
-                                        <h3 className="text-sm font-medium mb-1">Description</h3>
-                                        <p className="text-sm">{selectedIncident.description}</p>
-                                      </div>
-
-                                      <div>
-                                        <h3 className="text-sm font-medium mb-1">Evidence</h3>
-                                        <p className="text-sm">
-                                          {selectedIncident.evidence
-                                            ? "Evidence files attached"
-                                            : "No evidence files attached"}
-                                        </p>
-                                      </div>
-
-                                      <div>
-                                        <h3 className="text-sm font-medium mb-1">Update Status</h3>
-                                        <Select
-                                          defaultValue={selectedIncident.status}
-                                          onValueChange={(value) => {
-                                            updateIncidentStatus(selectedIncident.id, value)
-                                            setSelectedIncident({ ...selectedIncident, status: value })
-                                          }}
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="Select status" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="New">New</SelectItem>
-                                            <SelectItem value="In Progress">In Progress</SelectItem>
-                                            <SelectItem value="Resolved">Resolved</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    </div>
-
-                                    <DialogFooter>
-                                      <Button type="submit">Save Changes</Button>
-                                    </DialogFooter>
-                                  </>
-                                )}
-                              </DialogContent>
-                            </Dialog>
-
-                            <Select
-                              defaultValue={incident.status}
-                              onValueChange={(value) => updateIncidentStatus(incident.id, value)}
-                            >
-                              <SelectTrigger className="h-8 w-[130px]">
-                                <SelectValue placeholder="Update status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="New">New</SelectItem>
-                                <SelectItem value="In Progress">In Progress</SelectItem>
-                                <SelectItem value="Resolved">Resolved</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                              <Select
+                                defaultValue={incident.status}
+                                onValueChange={(value) => updateIncidentStatus(incident.id, value)}
+                              >
+                                <SelectTrigger className="h-8 w-[130px]">
+                                  <SelectValue placeholder="Update status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="New">New</SelectItem>
+                                  <SelectItem value="In Progress">In Progress</SelectItem>
+                                  <SelectItem value="Resolved">Resolved</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
                   ) : (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-4">
@@ -380,36 +399,468 @@ export default function AdminDashboardPage() {
 
         <TabsContent value="new" className="m-0">
           <Card>
-            <CardContent className="p-4 text-center">
-              {filteredIncidents.length > 0 ? (
-                <Table>{/* Same table structure as above */}</Table>
-              ) : (
-                <p>No new cases found</p>
-              )}
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Case ID</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Reporter</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredIncidents.filter(incident => incident.status === "New").length > 0 ? (
+                    filteredIncidents
+                      .filter(incident => incident.status === "New")
+                      .map((incident) => {
+                        const { date, time } = formatDateTime(incident.date, incident.time)
+                        return (
+                          <TableRow key={incident.id}>
+                            <TableCell className="font-medium">{incident.id}</TableCell>
+                            <TableCell>{date}</TableCell>
+                            <TableCell>{incident.location}</TableCell>
+                            <TableCell>{incident.type}</TableCell>
+                            <TableCell>{incident.reporter_name}</TableCell>
+                            <TableCell>
+                              <Badge className={getStatusColor(incident.status)}>
+                                <span className="flex items-center gap-1">
+                                  {getStatusIcon(incident.status)}
+                                  {incident.status}
+                                </span>
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => setSelectedIncident(incident)}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      <span className="sr-only">View details</span>
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="sm:max-w-[600px]">
+                                    {selectedIncident && (
+                                      <>
+                                        <DialogHeader>
+                                          <DialogTitle className="flex items-center justify-between">
+                                            <span>Case Details: INC-{selectedIncident.id}</span>
+                                            <Badge className={getStatusColor(selectedIncident.status)}>
+                                              {selectedIncident.status}
+                                            </Badge>
+                                          </DialogTitle>
+                                          <DialogDescription>
+                                            Reported on {formatDateTime(selectedIncident.date, selectedIncident.time).date} at {formatDateTime(selectedIncident.date, selectedIncident.time).time}
+                                          </DialogDescription>
+                                        </DialogHeader>
+
+                                        <div className="grid gap-4 py-4">
+                                          <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <h3 className="text-sm font-medium mb-1">Reporter</h3>
+                                              <p className="text-sm">{selectedIncident.reporter_name}</p>
+                                            </div>
+                                            <div>
+                                              <h3 className="text-sm font-medium mb-1">Incident Type</h3>
+                                              <p className="text-sm">{selectedIncident.type}</p>
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Location</h3>
+                                            <p className="text-sm">{selectedIncident.location}</p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Description</h3>
+                                            <p className="text-sm">{selectedIncident.description}</p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Evidence</h3>
+                                            <p className="text-sm">
+                                              {selectedIncident.evidence
+                                                ? "Evidence files attached"
+                                                : "No evidence files attached"}
+                                            </p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Update Status</h3>
+                                            <Select
+                                              defaultValue={selectedIncident.status}
+                                              onValueChange={(value) => {
+                                                updateIncidentStatus(selectedIncident.id, value)
+                                                setSelectedIncident({ ...selectedIncident, status: value })
+                                              }}
+                                            >
+                                              <SelectTrigger>
+                                                <SelectValue placeholder="Select status" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="New">New</SelectItem>
+                                                <SelectItem value="In Progress">In Progress</SelectItem>
+                                                <SelectItem value="Resolved">Resolved</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+
+                                        <DialogFooter>
+                                          <Button type="submit">Save Changes</Button>
+                                        </DialogFooter>
+                                      </>
+                                    )}
+                                  </DialogContent>
+                                </Dialog>
+
+                                <Select
+                                  defaultValue={incident.status}
+                                  onValueChange={(value) => updateIncidentStatus(incident.id, value)}
+                                >
+                                  <SelectTrigger className="h-8 w-[130px]">
+                                    <SelectValue placeholder="Update status" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="New">New</SelectItem>
+                                    <SelectItem value="In Progress">In Progress</SelectItem>
+                                    <SelectItem value="Resolved">Resolved</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-4">
+                        No new cases found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="in-progress" className="m-0">
           <Card>
-            <CardContent className="p-4 text-center">
-              {filteredIncidents.length > 0 ? (
-                <Table>{/* Same table structure as above */}</Table>
-              ) : (
-                <p>No in-progress cases found</p>
-              )}
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Case ID</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Reporter</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredIncidents.filter(incident => incident.status === "In Progress").length > 0 ? (
+                    filteredIncidents
+                      .filter(incident => incident.status === "In Progress")
+                      .map((incident) => {
+                        const { date, time } = formatDateTime(incident.date, incident.time)
+                        return (
+                          <TableRow key={incident.id}>
+                            <TableCell className="font-medium">{incident.id}</TableCell>
+                            <TableCell>{date}</TableCell>
+                            <TableCell>{incident.location}</TableCell>
+                            <TableCell>{incident.type}</TableCell>
+                            <TableCell>{incident.reporter_name}</TableCell>
+                            <TableCell>
+                              <Badge className={getStatusColor(incident.status)}>
+                                <span className="flex items-center gap-1">
+                                  {getStatusIcon(incident.status)}
+                                  {incident.status}
+                                </span>
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => setSelectedIncident(incident)}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      <span className="sr-only">View details</span>
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="sm:max-w-[600px]">
+                                    {selectedIncident && (
+                                      <>
+                                        <DialogHeader>
+                                          <DialogTitle className="flex items-center justify-between">
+                                            <span>Case Details: INC-{selectedIncident.id}</span>
+                                            <Badge className={getStatusColor(selectedIncident.status)}>
+                                              {selectedIncident.status}
+                                            </Badge>
+                                          </DialogTitle>
+                                          <DialogDescription>
+                                            Reported on {formatDateTime(selectedIncident.date, selectedIncident.time).date} at {formatDateTime(selectedIncident.date, selectedIncident.time).time}
+                                          </DialogDescription>
+                                        </DialogHeader>
+
+                                        <div className="grid gap-4 py-4">
+                                          <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <h3 className="text-sm font-medium mb-1">Reporter</h3>
+                                              <p className="text-sm">{selectedIncident.reporter_name}</p>
+                                            </div>
+                                            <div>
+                                              <h3 className="text-sm font-medium mb-1">Incident Type</h3>
+                                              <p className="text-sm">{selectedIncident.type}</p>
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Location</h3>
+                                            <p className="text-sm">{selectedIncident.location}</p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Description</h3>
+                                            <p className="text-sm">{selectedIncident.description}</p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Evidence</h3>
+                                            <p className="text-sm">
+                                              {selectedIncident.evidence
+                                                ? "Evidence files attached"
+                                                : "No evidence files attached"}
+                                            </p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Update Status</h3>
+                                            <Select
+                                              defaultValue={selectedIncident.status}
+                                              onValueChange={(value) => {
+                                                updateIncidentStatus(selectedIncident.id, value)
+                                                setSelectedIncident({ ...selectedIncident, status: value })
+                                              }}
+                                            >
+                                              <SelectTrigger>
+                                                <SelectValue placeholder="Select status" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="New">New</SelectItem>
+                                                <SelectItem value="In Progress">In Progress</SelectItem>
+                                                <SelectItem value="Resolved">Resolved</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+
+                                        <DialogFooter>
+                                          <Button type="submit">Save Changes</Button>
+                                        </DialogFooter>
+                                      </>
+                                    )}
+                                  </DialogContent>
+                                </Dialog>
+
+                                <Select
+                                  defaultValue={incident.status}
+                                  onValueChange={(value) => updateIncidentStatus(incident.id, value)}
+                                >
+                                  <SelectTrigger className="h-8 w-[130px]">
+                                    <SelectValue placeholder="Update status" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="New">New</SelectItem>
+                                    <SelectItem value="In Progress">In Progress</SelectItem>
+                                    <SelectItem value="Resolved">Resolved</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-4">
+                        No in-progress cases found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="resolved" className="m-0">
           <Card>
-            <CardContent className="p-4 text-center">
-              {filteredIncidents.length > 0 ? (
-                <Table>{/* Same table structure as above */}</Table>
-              ) : (
-                <p>No resolved cases found</p>
-              )}
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Case ID</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Reporter</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredIncidents.filter(incident => incident.status === "Resolved").length > 0 ? (
+                    filteredIncidents
+                      .filter(incident => incident.status === "Resolved")
+                      .map((incident) => {
+                        const { date, time } = formatDateTime(incident.date, incident.time)
+                        return (
+                          <TableRow key={incident.id}>
+                            <TableCell className="font-medium">{incident.id}</TableCell>
+                            <TableCell>{date}</TableCell>
+                            <TableCell>{incident.location}</TableCell>
+                            <TableCell>{incident.type}</TableCell>
+                            <TableCell>{incident.reporter_name}</TableCell>
+                            <TableCell>
+                              <Badge className={getStatusColor(incident.status)}>
+                                <span className="flex items-center gap-1">
+                                  {getStatusIcon(incident.status)}
+                                  {incident.status}
+                                </span>
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 w-8 p-0"
+                                      onClick={() => setSelectedIncident(incident)}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      <span className="sr-only">View details</span>
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="sm:max-w-[600px]">
+                                    {selectedIncident && (
+                                      <>
+                                        <DialogHeader>
+                                          <DialogTitle className="flex items-center justify-between">
+                                            <span>Case Details: INC-{selectedIncident.id}</span>
+                                            <Badge className={getStatusColor(selectedIncident.status)}>
+                                              {selectedIncident.status}
+                                            </Badge>
+                                          </DialogTitle>
+                                          <DialogDescription>
+                                            Reported on {formatDateTime(selectedIncident.date, selectedIncident.time).date} at {formatDateTime(selectedIncident.date, selectedIncident.time).time}
+                                          </DialogDescription>
+                                        </DialogHeader>
+
+                                        <div className="grid gap-4 py-4">
+                                          <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <h3 className="text-sm font-medium mb-1">Reporter</h3>
+                                              <p className="text-sm">{selectedIncident.reporter_name}</p>
+                                            </div>
+                                            <div>
+                                              <h3 className="text-sm font-medium mb-1">Incident Type</h3>
+                                              <p className="text-sm">{selectedIncident.type}</p>
+                                            </div>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Location</h3>
+                                            <p className="text-sm">{selectedIncident.location}</p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Description</h3>
+                                            <p className="text-sm">{selectedIncident.description}</p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Evidence</h3>
+                                            <p className="text-sm">
+                                              {selectedIncident.evidence
+                                                ? "Evidence files attached"
+                                                : "No evidence files attached"}
+                                            </p>
+                                          </div>
+
+                                          <div>
+                                            <h3 className="text-sm font-medium mb-1">Update Status</h3>
+                                            <Select
+                                              defaultValue={selectedIncident.status}
+                                              onValueChange={(value) => {
+                                                updateIncidentStatus(selectedIncident.id, value)
+                                                setSelectedIncident({ ...selectedIncident, status: value })
+                                              }}
+                                            >
+                                              <SelectTrigger>
+                                                <SelectValue placeholder="Select status" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="New">New</SelectItem>
+                                                <SelectItem value="In Progress">In Progress</SelectItem>
+                                                <SelectItem value="Resolved">Resolved</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+
+                                        <DialogFooter>
+                                          <Button type="submit">Save Changes</Button>
+                                        </DialogFooter>
+                                      </>
+                                    )}
+                                  </DialogContent>
+                                </Dialog>
+
+                                <Select
+                                  defaultValue={incident.status}
+                                  onValueChange={(value) => updateIncidentStatus(incident.id, value)}
+                                >
+                                  <SelectTrigger className="h-8 w-[130px]">
+                                    <SelectValue placeholder="Update status" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="New">New</SelectItem>
+                                    <SelectItem value="In Progress">In Progress</SelectItem>
+                                    <SelectItem value="Resolved">Resolved</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-4">
+                        No resolved cases found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>

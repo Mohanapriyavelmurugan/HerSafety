@@ -86,55 +86,58 @@ export default function ReportIncidentPage() {
     },
   })
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true)
 
-    // Generate a unique case ID
-    const newCaseId = "INC-" + Math.floor(100000 + Math.random() * 900000)
-    setCaseId(newCaseId)
+    try {
+      // Generate a unique case ID
+      const newCaseId = "INC-" + Math.floor(100000 + Math.random() * 900000)
+      setCaseId(newCaseId)
 
-    // Create incident object
-    const incident = {
-      id: newCaseId,
-      userId: user?.id,
-      date: format(values.date, "yyyy-MM-dd"),
-      time: values.time,
-      location: values.location,
-      type: values.incidentType,
-      description: values.description,
-      status: "New",
-      reporter: user?.name,
-      evidence: values.evidence && values.evidence.length > 0,
-      updates: [
-        {
-          date: format(new Date(), "yyyy-MM-dd"),
-          time: format(new Date(), "HH:mm"),
-          message: "Case received and pending review.",
+      // Create incident object matching our database schema exactly
+      const incident = {
+        id: newCaseId,
+        user_id: 1, // Using a simple integer value
+        date: format(values.date, "yyyy-MM-dd"),
+        time: values.time,
+        location: values.location,
+        type: values.incidentType,
+        description: values.description,
+        status: "New",
+        reporter: user?.name || "Anonymous",
+        has_evidence: values.evidence && values.evidence.length > 0 ? 1 : 0
+      }
+
+      console.log('Submitting incident with data:', incident)
+
+      const response = await fetch('/api/incidents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      ],
-    }
-
-    // Simulate API call
-    setTimeout(() => {
-      // Save to localStorage for demo purposes
-      const incidents = JSON.parse(localStorage.getItem("hersafety_incidents") || "[]")
-      incidents.push(incident)
-      localStorage.setItem("hersafety_incidents", JSON.stringify(incidents))
-
-      // Save to user's incidents
-      const userIncidents = JSON.parse(localStorage.getItem("hersafety_user_incidents") || "[]")
-      userIncidents.push({
-        id: incident.id,
-        date: incident.date,
-        type: incident.type,
-        location: incident.location,
-        status: incident.status,
+        body: JSON.stringify(incident),
       })
-      localStorage.setItem("hersafety_user_incidents", JSON.stringify(userIncidents))
 
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('API Error:', errorData)
+        throw new Error(errorData.error || 'Failed to report incident')
+      }
+
+      const data = await response.json()
+      console.log('Incident created successfully:', data)
+      
       setIsLoading(false)
       setShowSuccessDialog(true)
-    }, 2000)
+    } catch (error) {
+      console.error('Error reporting incident:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to report incident. Please try again.",
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
   }
 
   if (authLoading) {

@@ -49,25 +49,31 @@ export default function TrackCasePage() {
     }
   }, [caseIdParam])
 
-  function handleSearch(caseId: string) {
+  async function handleSearch(caseId: string) {
     setIsLoading(true)
     setNotFound(false)
     setCaseData(null)
 
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
-
-      // Get incidents from localStorage
-      const incidents = JSON.parse(localStorage.getItem("hersafety_incidents") || "[]")
-      const foundCase = incidents.find((incident: any) => incident.id === caseId)
-
-      if (foundCase) {
-        setCaseData(foundCase)
-      } else {
-        setNotFound(true)
+    try {
+      const response = await fetch(`/api/incidents/${caseId}`)
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          setNotFound(true)
+        } else {
+          throw new Error('Failed to fetch case data')
+        }
+        return
       }
-    }, 1000)
+
+      const data = await response.json()
+      setCaseData(data)
+    } catch (error) {
+      console.error('Error fetching case:', error)
+      setNotFound(true)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   function onSubmit(values: z.infer<typeof formSchema>) {
